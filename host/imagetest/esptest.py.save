@@ -1,0 +1,34 @@
+import socket
+import sys
+
+UDP_IP = "192.168.10.81"
+UDP_PORT = 5006
+MESSAGE = ""
+
+print "UDP target IP:", UDP_IP
+print "UDP target port:", UDP_PORT
+
+width = int(sys.argv[1])
+heigth = int(sys.argv[2])
+
+packageCount = 1 + pixcelCount/165
+pixelCount = width*heigth*3
+
+
+MESSAGE += str(chr(0x03)) #Command Byte 0x03 = Frame Transmit
+
+for packetNo in range(packageCount)MESSAGE += str(chr(0x03)) #Command Byte 0x03 = Frame Transmit
+:
+  print str(packetNo) + ". Packet"
+
+MESSAGE += str(chr(0x10))
+MESSAGE += str(chr(0x2))
+
+
+HEXMESSAGE = ":".join("{:02x}".format(ord(c)) for c in MESSAGE)
+
+print "MESSAGE: " + HEXMESSAGE
+
+#sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP
+#sock.sendto(MESSAGE, (UDP_IP, UDP_PORT))
+
