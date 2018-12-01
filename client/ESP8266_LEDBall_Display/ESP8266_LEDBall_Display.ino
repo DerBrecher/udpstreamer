@@ -1,8 +1,6 @@
-//Git bash Test
-
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
-
+#include <FastLED.h>
 
 //------------------  WiFi Credentials  ------------------
 char wifissid[] = "pizerowap";
@@ -29,14 +27,18 @@ boolean statusledstate = false;
 int statusled = 16;
 
 //------------------  LED Matrix  ------------------
-
-#define MAXLEDMATRIXWIDTH 40
-#define MAXLEDMATRIXHEIGTH 40
-byte ledFrameBuffer[MAXLEDMATRIXWIDTH * MAXLEDMATRIXHEIGTH * 3] = {102}; //Width * Height * RGB
+#define MATRIXPIN 5
+#define LEDMATRIXWIDTH 20
+#define LEDMATRIXHEIGHT 20
+#define LEDCOUNT LEDMATRIXWIDTH * LEDMATRIXHEIGHT
+#define ZICKZACK
+CRGB leds[LEDCOUNT];
+byte ledFrameBuffer[LEDCOUNT * 3] = {102}; //Width * Height * RGB
+byte Buffer2D[LEDMATRIXWIDTH * 3][LEDMATRIXHEIGHT];
 int pixelTracker = 0; //Keeps Track of the current pixel between UDP Packets
 boolean newFrameReady = false;
 int frameWidth = 0;
-int frameHeigth = 0;
+int frameHeight = 0;
 
 //------------------  Debug  ------------------
 int loopspersec = 0;
@@ -63,7 +65,11 @@ void setup() {
   delay(10);
 
   Udp.begin(localUdpPort); //open UDP Port
-  pinMode(statusled, OUTPUT);
+
+  pinMode(statusled, OUTPUT); //Debug Status LED
+
+  LEDS.addLeds<WS2812, MATRIXPIN, RGB>(leds, LEDCOUNT);
+  //LEDS.setBrightness(84);
 }
 
 //------------------  Loop  ------------------
@@ -75,6 +81,8 @@ void loop() {
     //printLEDFrameBuffer();
   }
   currentmillis = millis();
+
+  updateMatrix();
 
   int packetSize = Udp.parsePacket(); //Check if we have new data at our UDP port
   if (packetSize)
@@ -104,8 +112,8 @@ void loop() {
   //Loops per second counter
   loopspersec++;
   if ((currentmillis - lastlooptime) > 1000) {
-    //Serial.print("Loops per Second: ");
-    //Serial.println(loopspersec);
+    Serial.print("Loops per Second: ");
+    Serial.println(loopspersec);
     lastlooptime = currentmillis;
     loopspersec = 0;
   }
@@ -116,6 +124,57 @@ void loop() {
   }
 
   digitalWrite(statusled, !statusledstate); //Leds on NodeMCU are active low
+}
+
+void updateMatrix() {
+  if (newFrameReady) {
+    newFrameReady = false;
+    for (int y = 0; y < LEDMATRIXHEIGHT; y++) { //Rows
+      for (int x = 0; x < LEDMATRIXWIDTH * 3; x++) { //Column
+        if ((x < frameWidth * 3) && (y < frameHeight)) {
+          Buffer2D[x][y] = ledFrameBuffer[y * frameWidth * 3 + x];
+        }
+        else {
+          Buffer2D[x][y] = 0;
+        }
+      }
+    }
+
+    for (int y = 0; y < LEDMATRIXHEIGHT; y++) { //Rows
+      for (int x = 0; x < LEDMATRIXWIDTH; x++) { //Column
+#ifdef ZICKZACK
+        if (y / 2 == 0) { //even Rows
+          leds[y * LEDMATRIXHEIGHT + x][0] = Buffer2D[x * 3][y];
+          leds[y * LEDMATRIXHEIGHT + x][1] = Buffer2D[x * 3 + 1][y];
+          leds[y * LEDMATRIXHEIGHT + x][2] = Buffer2D[x * 3 + 2][y];
+        }
+        else { //Odd Rows
+          int reverseX = LEDMATRIXWIDTH - 1 - x;
+          leds[y * LEDMATRIXHEIGHT + reverseX][0] = Buffer2D[reverseX * 3][y];
+          leds[y * LEDMATRIXHEIGHT + reverseX][1] = Buffer2D[reverseX * 3 + 1][y];
+          leds[y * LEDMATRIXHEIGHT + reverseX][2] = Buffer2D[reverseX * 3 + 2][y];
+        }
+#endif
+#ifndef ZICKZACK
+        leds[y * LEDMATRIXHEIGHT + x][0] = Buffer2D[x * 3][y];
+        leds[y * LEDMATRIXHEIGHT + x][1] = Buffer2D[x * 3 + 1][y];
+        leds[y * LEDMATRIXHEIGHT + x][2] = Buffer2D[x * 3 + 2][y];
+#endif
+      }
+    }
+
+    /* //--Debug output
+      Serial.println("2D Matrix");
+      for (int y = 0; y < LEDMATRIXHEIGHT; y++) { //Rows
+      for (int x = 0; x < LEDMATRIXWIDTH * 3; x++) { //Column
+        Serial.print(Buffer2D[x][y], HEX);
+        Serial.print(":");
+      }
+      Serial.println("");
+      }
+    */
+  }
+  //FastLED.show();
 }
 
 int handleUDP(int packetlength) {
@@ -132,7 +191,7 @@ int handleUDP(int packetlength) {
         int framePacketNo = incomingPacket[1]; //Pack Number
         int framePacketCount = incomingPacket[2]; //Number of Packets for the whole Frame
         frameWidth = incomingPacket[3]; //Width of total Transmitted Frame
-        frameHeigth = incomingPacket[4]; //Heigth of total Transmitted Frame
+        frameHeight = incomingPacket[4]; //Heigth of total Transmitted Frame
         int pixelCountPacket = incomingPacket[5]; //Amount of RGB Pixels transmitted in this packet
 
         if (packetlength < pixelCountPacket * 3 + 6) {
@@ -166,10 +225,10 @@ int handleUDP(int packetlength) {
         }
         packetTracker++;
 
-        if ((packetTracker == framePacketCount) && (pixelTracker == frameHeigth * frameWidth * 3)) { //We received data for the whole Frame
-          newFrameReady = true;          
+        if ((packetTracker == framePacketCount) && (pixelTracker == frameHeight * frameWidth * 3)) { //We received data for the whole Frame
+          newFrameReady = true;
           Serial.println("Received data for the whole Frame");
-          printLEDFrameBuffer();
+          //printLEDFrameBuffer();
         }
       }
       break;
@@ -183,14 +242,13 @@ int handleUDP(int packetlength) {
   return 1;
 }
 
-int printLEDFrameBuffer() {
-  for (int i = 0; i < frameHeigth; i++) { //Rows
+void printLEDFrameBuffer() {
+  for (int i = 0; i < frameHeight; i++) { //Rows
     for (int j = 0; j < frameWidth * 3; j++) { //Column
       Serial.print(ledFrameBuffer[i * frameWidth * 3 + j], HEX);
       Serial.print(":");
     }
     Serial.println("");
   }
-  return 1;
 }
 
