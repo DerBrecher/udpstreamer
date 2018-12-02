@@ -30,13 +30,13 @@ int statusled = 16;
 
 //------------------  LED Matrix  ------------------
 #define MATRIXPIN 7
-#define LEDMATRIXWIDTH 25
-#define LEDMATRIXHEIGHT 16
+#define LEDMATRIXWIDTH 16
+#define LEDMATRIXHEIGHT 25
 #define LEDCOUNT LEDMATRIXWIDTH * LEDMATRIXHEIGHT
 #define ZICKZACK
 CRGB leds[LEDCOUNT];
 byte ledFrameBuffer[LEDCOUNT * 3] = {102}; //Width * Height * RGB
-byte Buffer2D[LEDMATRIXWIDTH * 3][LEDMATRIXHEIGHT];
+byte Buffer2D[LEDMATRIXWIDTH][LEDMATRIXHEIGHT][3];
 int pixelTracker = 0; //Keeps Track of the current pixel between UDP Packets
 boolean newFrameReady = false;
 int frameWidth = 0;
@@ -84,7 +84,8 @@ void loop() {
   }
   currentmillis = millis();
 
-  updateMatrix();
+  //updateMatrix();
+  simpleUpdateMatrix();
 
   int packetSize = Udp.parsePacket(); //Check if we have new data at our UDP port
   if (packetSize)
@@ -128,16 +129,42 @@ void loop() {
   digitalWrite(statusled, !statusledstate); //Leds on NodeMCU are active low
 }
 
+void simpleUpdateMatrix() {
+  if (newFrameReady) {
+    newFrameReady = false;
+    for (int x = 0; x < LEDMATRIXWIDTH; x++) { //Rows
+      for (int y = 0; y < LEDMATRIXHEIGHT; y++) { //Column
+        if (x % 2 == 0) { //even Rows
+          leds[x * LEDMATRIXHEIGHT + y][0] = ledFrameBuffer[x * 3 + LEDMATRIXWIDTH * y * 3]; // RED
+          leds[x * LEDMATRIXHEIGHT + y][1] = ledFrameBuffer[x * 3 + LEDMATRIXWIDTH * y * 3 + 1]; // GREEN
+          leds[x * LEDMATRIXHEIGHT + y][2] = ledFrameBuffer[x * 3 + LEDMATRIXWIDTH * y * 3 + 2]; // BLUE
+        }
+        else {
+          int reverseY = LEDMATRIXHEIGHT - y - 1;
+          leds[x * LEDMATRIXHEIGHT + reverseY][0] = ledFrameBuffer[x * 3 + LEDMATRIXWIDTH * y * 3]; // RED
+          leds[x * LEDMATRIXHEIGHT + reverseY][1] = ledFrameBuffer[x * 3 + LEDMATRIXWIDTH * y * 3 + 1]; // GREEN
+          leds[x * LEDMATRIXHEIGHT + reverseY][2] = ledFrameBuffer[x * 3 + LEDMATRIXWIDTH * y * 3 + 2]; // BLUE
+        }
+      }
+    }
+  }
+  FastLED.show();
+}
+
 void updateMatrix() {
   if (newFrameReady) {
     newFrameReady = false;
     for (int y = 0; y < LEDMATRIXHEIGHT; y++) { //Rows
       for (int x = 0; x < LEDMATRIXWIDTH * 3; x++) { //Column
-        if ((x < frameWidth * 3) && (y < frameHeight)) {
-          Buffer2D[x][y] = ledFrameBuffer[y * frameWidth * 3 + x];
+        if ((x < frameWidth) && (y < frameHeight)) {
+          Buffer2D[x][y][0] = ledFrameBuffer[y * frameWidth * 3 + x]; //Red
+          Buffer2D[x][y][1] = ledFrameBuffer[y * frameWidth * 3 + x + 1]; //Greeen
+          Buffer2D[x][y][2] = ledFrameBuffer[y * frameWidth * 3 + x + 2]; //Blue
         }
         else {
-          Buffer2D[x][y] = 0;
+          Buffer2D[x][y][0] = 0;
+          Buffer2D[x][y][1] = 0;
+          Buffer2D[x][y][2] = 0;
         }
       }
     }
@@ -145,15 +172,15 @@ void updateMatrix() {
     for (int y = 0; y < LEDMATRIXHEIGHT; y++) { //Rows
       for (int x = 0; x < LEDMATRIXWIDTH; x++) { //Column
         if (y % 2 == 0) { //even Rows
-          leds[y * LEDMATRIXWIDTH + x][0] = Buffer2D[x * 3][y];
-          leds[y * LEDMATRIXWIDTH + x][1] = Buffer2D[x * 3 + 1][y];
-          leds[y * LEDMATRIXWIDTH + x][2] = Buffer2D[x * 3 + 2][y];
+          leds[y * LEDMATRIXWIDTH + x][0] = Buffer2D[x][y][0];
+          leds[y * LEDMATRIXWIDTH + x][1] = Buffer2D[x][y][1];
+          leds[y * LEDMATRIXWIDTH + x][2] = Buffer2D[x][y][2];
         }
         else { //Odd Rows
           int reverseX = LEDMATRIXWIDTH - 1 - x;
-          leds[y * LEDMATRIXWIDTH + reverseX][0] = Buffer2D[x * 3][y];
-          leds[y * LEDMATRIXWIDTH + reverseX][1] = Buffer2D[x * 3 + 1][y];
-          leds[y * LEDMATRIXWIDTH + reverseX][2] = Buffer2D[x * 3 + 2][y];
+          leds[y * LEDMATRIXWIDTH + reverseX][0] = Buffer2D[x][y][0];
+          leds[y * LEDMATRIXWIDTH + reverseX][1] = Buffer2D[x][y][1];
+          leds[y * LEDMATRIXWIDTH + reverseX][2] = Buffer2D[x][y][2];
         }
         /*
           #ifndef ZICKZACK
@@ -164,19 +191,27 @@ void updateMatrix() {
         */
       }
     }
-
-    //--Debug output
-    Serial.println("2D Matrix");
-    for (int y = 0; y < LEDMATRIXHEIGHT; y++) { //Rows
-      for (int x = 0; x < LEDMATRIXWIDTH * 3; x++) { //Column
-        Serial.print(Buffer2D[x][y], HEX);
-        Serial.print(":");
-      }
-      Serial.println("");
-    }
-
+    /*
+        //--Debug output
+        Serial.println("2D Matrix");
+        Serial.print("FrameWidth: ");
+        Serial.print(frameWidth);
+        Serial.print("FrameHeight: ");
+        Serial.print(frameHeight);
+        for (int y = 0; y < LEDMATRIXHEIGHT; y++) { //Rows
+          for (int x = 0; x < LEDMATRIXWIDTH; x++) { //Column
+            Serial.print(Buffer2D[x][y][0], HEX);
+            Serial.print(":");
+            Serial.print(Buffer2D[x][y][1], HEX);
+            Serial.print(":");
+            Serial.print(Buffer2D[x][y][2], HEX);
+            Serial.print(":");
+          }
+          Serial.println("");
+        }
+    */
   }
-  FastLED.show();
+  // FastLED.show();
 }
 
 int handleUDP(int packetlength) {
@@ -189,7 +224,7 @@ int handleUDP(int packetlength) {
 
     case 0x03: //Receiving new frame data
       {
-        Serial.println("Receiving a new Package");
+        //Serial.println("Receiving a new Package");
         int framePacketNo = incomingPacket[1]; //Pack Number
         int framePacketCount = incomingPacket[2]; //Number of Packets for the whole Frame
         frameWidth = incomingPacket[3]; //Width of total Transmitted Frame
@@ -210,7 +245,7 @@ int handleUDP(int packetlength) {
         }
 
         if (framePacketNo == 1) { //We are receving a new Frame
-          Serial.println("Start of a new Frame");
+          //Serial.println("Start of a new Frame");
           newFrameReady = false;
           pixelTracker = 0;
           packetTracker = 0;
@@ -229,7 +264,7 @@ int handleUDP(int packetlength) {
 
         if ((packetTracker == framePacketCount) && (pixelTracker == frameHeight * frameWidth * 3)) { //We received data for the whole Frame
           newFrameReady = true;
-          Serial.println("Received data for the whole Frame");
+          //Serial.println("Received data for the whole Frame");
           //printLEDFrameBuffer();
         }
       }
