@@ -2,6 +2,7 @@
 
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
+#define FASTLED_ESP8266_DMA
 #include <FastLED.h>
 
 //------------------  WiFi Credentials  ------------------
@@ -22,6 +23,7 @@ int packetTracker = 0;
 unsigned long currentmillis = 0;
 unsigned long lastmillis = 0;
 unsigned long lastlooptime = 0;
+unsigned long lastMatrixUpdate = 0;
 
 //------------------  Information LED  ------------------
 unsigned long ledholdtime = 1000; //Time to flash LED
@@ -29,7 +31,7 @@ boolean statusledstate = false;
 int statusled = 16;
 
 //------------------  LED Matrix  ------------------
-#define MATRIXPIN 7
+#define MATRIXPIN 3
 #define LEDMATRIXWIDTH 16
 #define LEDMATRIXHEIGHT 25
 #define LEDCOUNT LEDMATRIXWIDTH * LEDMATRIXHEIGHT
@@ -41,7 +43,8 @@ int pixelTracker = 0; //Keeps Track of the current pixel between UDP Packets
 boolean newFrameReady = false;
 int frameWidth = 0;
 int frameHeight = 0;
-
+int maxFPS = 60;
+int matrixUpdatePeriod = int(1.0 / maxFPS * 1000);
 //------------------  Debug  ------------------
 int loopspersec = 0;
 
@@ -83,6 +86,8 @@ void loop() {
     //printLEDFrameBuffer();
   }
   currentmillis = millis();
+
+
 
   //updateMatrix();
   simpleUpdateMatrix();
@@ -148,70 +153,12 @@ void simpleUpdateMatrix() {
       }
     }
   }
-  FastLED.show();
-}
 
-void updateMatrix() {
-  if (newFrameReady) {
-    newFrameReady = false;
-    for (int y = 0; y < LEDMATRIXHEIGHT; y++) { //Rows
-      for (int x = 0; x < LEDMATRIXWIDTH * 3; x++) { //Column
-        if ((x < frameWidth) && (y < frameHeight)) {
-          Buffer2D[x][y][0] = ledFrameBuffer[y * frameWidth * 3 + x]; //Red
-          Buffer2D[x][y][1] = ledFrameBuffer[y * frameWidth * 3 + x + 1]; //Greeen
-          Buffer2D[x][y][2] = ledFrameBuffer[y * frameWidth * 3 + x + 2]; //Blue
-        }
-        else {
-          Buffer2D[x][y][0] = 0;
-          Buffer2D[x][y][1] = 0;
-          Buffer2D[x][y][2] = 0;
-        }
-      }
-    }
-
-    for (int y = 0; y < LEDMATRIXHEIGHT; y++) { //Rows
-      for (int x = 0; x < LEDMATRIXWIDTH; x++) { //Column
-        if (y % 2 == 0) { //even Rows
-          leds[y * LEDMATRIXWIDTH + x][0] = Buffer2D[x][y][0];
-          leds[y * LEDMATRIXWIDTH + x][1] = Buffer2D[x][y][1];
-          leds[y * LEDMATRIXWIDTH + x][2] = Buffer2D[x][y][2];
-        }
-        else { //Odd Rows
-          int reverseX = LEDMATRIXWIDTH - 1 - x;
-          leds[y * LEDMATRIXWIDTH + reverseX][0] = Buffer2D[x][y][0];
-          leds[y * LEDMATRIXWIDTH + reverseX][1] = Buffer2D[x][y][1];
-          leds[y * LEDMATRIXWIDTH + reverseX][2] = Buffer2D[x][y][2];
-        }
-        /*
-          #ifndef ZICKZACK
-                leds[y * LEDMATRIXHEIGHT + x][0] = Buffer2D[x * 3][y];
-                leds[y * LEDMATRIXHEIGHT + x][1] = Buffer2D[x * 3 + 1][y];
-                leds[y * LEDMATRIXHEIGHT + x][2] = Buffer2D[x * 3 + 2][y];
-          #endif
-        */
-      }
-    }
-    /*
-        //--Debug output
-        Serial.println("2D Matrix");
-        Serial.print("FrameWidth: ");
-        Serial.print(frameWidth);
-        Serial.print("FrameHeight: ");
-        Serial.print(frameHeight);
-        for (int y = 0; y < LEDMATRIXHEIGHT; y++) { //Rows
-          for (int x = 0; x < LEDMATRIXWIDTH; x++) { //Column
-            Serial.print(Buffer2D[x][y][0], HEX);
-            Serial.print(":");
-            Serial.print(Buffer2D[x][y][1], HEX);
-            Serial.print(":");
-            Serial.print(Buffer2D[x][y][2], HEX);
-            Serial.print(":");
-          }
-          Serial.println("");
-        }
-    */
+  if ((currentmillis - lastMatrixUpdate) > matrixUpdatePeriod) {
+    lastMatrixUpdate = currentmillis;
+    //Serial.println("LED Update");
+    FastLED.show();
   }
-  // FastLED.show();
 }
 
 int handleUDP(int packetlength) {
