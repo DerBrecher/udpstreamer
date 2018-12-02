@@ -32,6 +32,7 @@ def sendPNG(imageFile):
 def sendFrame(frameTuple):
   packageSizes = getPackageSizes(frameTuple[0:2])
   sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # open one UDP Socket for the Frame
+  pixelCounter = 0
 
   for packetNo in range(len(packageSizes)):
     MESSAGE =  chr(0x03) #Command Byte 0x03 = Frame Transmit
@@ -39,9 +40,10 @@ def sendFrame(frameTuple):
     MESSAGE += chr(len(packageSizes)) #Amout of total Packages
     MESSAGE += chr(frameTuple[0]) #Frame Width
     MESSAGE += chr(frameTuple[1]) #Frame height
-    MESSAGE += chr(packageSizes[packetNo]) #PixelCount in Current Frame
-    for pixel in frameTuple[2]: #add Pixel Values to Message
-      MESSAGE += chr(pixel)
+    MESSAGE += chr(packageSizes[packetNo]) #PixelCount in Current Package
+    for i in range(packageSizes[packetNo]*3): #add Pixel Values to Message
+      MESSAGE += chr(frameTuple[2][pixelCounter])
+      pixelCounter += 1
 
     #--only for Debuging
     #HEXMESSAGE = ":".join("{:02x}".format(ord(c)) for c in MESSAGE)
